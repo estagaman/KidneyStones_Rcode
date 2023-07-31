@@ -1,0 +1,136 @@
+---
+title: "Readmetrial"
+output: html_document
+date: "2023-07-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r find stone-associated KOs (genes)}
+
+#load packages
+library(readxl)
+library("writexl")
+
+#read in KOs file, select "Genes" sheet for genes and "Pathways" for pathways 
+KOs_transposed <- read_excel("Desktop/LAUD/KOs_transposed_correct.xlsx", 
+      sheet = "Genes")
+View(KOs_transposed)
+
+#make data frame for results
+diffKOs <- data.frame()
+View(diffKOs)
+
+#P.mirabilis
+nsPm<- c(1)
+sPm<- c(12,14)
+Pm<- c(1,12,14)
+length(Pm)
+#S.epidermidis
+nsSe<- c(2,3)
+sSe<- c(10)
+Se<- c(2,3,10)
+#P.aeruginosa
+nsPa<- c(4,5)
+sPa<- c(8,9,13)
+Pa<- c(4,5,8,9,13)
+#E.coli
+nsEc<- c(6,7)
+sEc<- c(11,15)
+Ec<- c(6,7,11,15)
+
+#function
+alldiff_function<- function(x) {
+  KO<- colnames(KOs_transposed)[x]
+  Pmsum<- sum(KOs_transposed[Pm,x])
+  Sesum<- sum(KOs_transposed[Se,x])
+  Pasum<- sum(KOs_transposed[Pa,x])
+  Ecsum<- sum(KOs_transposed[Ec,x])
+  resultlist<-list()
+  #P.mirabilis
+  if (Pmsum != length(Pm) & Pmsum != 0) {
+    if (sum(KOs_transposed[nsPm, x]) == 0 & sum(KOs_transposed[sPm, x]) == length(sPm)) {
+      specname<- "P. mirabilis"
+      print(paste(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      }
+  }
+  #S.epidermidis
+  if (Sesum != length(Se) & Sesum != 0) {
+    if (sum(KOs_transposed[nsSe, x]) == 0 & sum(KOs_transposed[sSe, x]) == length(sSe)) {
+      specname<- "S. epidermidis"
+      print(paste(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+    }
+  }
+  #P.aeruginosa
+  if (Pasum != length(Pa) & Pasum != 0) {
+    if (sum(KOs_transposed[nsPa, x]) == 0 & sum(KOs_transposed[sPa, x]) == length(sPa)) {
+      specname<- "P. aeruginosa"
+      print(paste(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+    }
+  }
+  #E.coli
+  if (Ecsum != length(Ec) & Ecsum != 0) {
+    if (sum(KOs_transposed[nsEc, x]) == 0 & sum(KOs_transposed[sEc, x]) == length(sEc)) {
+      specname<- "E. coli"
+      print(paste(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+    }
+  }
+  return(resultlist)
+}
+#for loop 
+for (x in 2:ncol(KOs_transposed)) {
+  col <- KOs_transposed[ ,x]
+  #eliminates all 1s and all 0s
+  tryCatch({
+    if (sum(col) != 15 & sum(col) != 0) {
+      sig_KOs<- alldiff_function(x)
+      if (length(sig_KOs)==2){
+        diffKOs = rbind(diffKOs, sig_KOs)
+      }
+      if (length(sig_KOs)==4){
+        diffKOs = rbind(diffKOs, sig_KOs[1:2])
+        diffKOs = rbind(diffKOs, sig_KOs[3:4])
+      }
+      if (length(sig_KOs)==6){
+        diffKOs = rbind(diffKOs, sig_KOs[1:2])
+        diffKOs = rbind(diffKOs, sig_KOs[3:4])
+        diffKOs = rbind(diffKOs, sig_KOs[5:6])
+      }
+      if (length(sig_KOs)==8){
+        diffKOs = rbind(diffKOs, sig_KOs[1:2])
+        diffKOs = rbind(diffKOs, sig_KOs[3:4])
+        diffKOs = rbind(diffKOs, sig_KOs[5:6])
+        diffKOs = rbind(diffKOs, sig_KOs[7:8])
+      }
+      }
+  }, error=function(e) {
+      KO<- colnames(KOs_transposed)[x]
+      print(paste(KO, "error"))
+    }
+  )
+}
+
+View(diffKOs)
+#add column names to results data frame 
+colnames(diffKOs) = c("KO","species")
+
+write_xlsx(diffKOs,"diffKOsnew.xlsx")
+
+```
+
