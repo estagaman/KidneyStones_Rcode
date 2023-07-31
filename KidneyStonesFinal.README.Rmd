@@ -1,0 +1,592 @@
+---
+title: "KidneyStones.README"
+output: html_document
+date: "2023-07-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <https://urldefense.com/v3/__http://rmarkdown.rstudio.com__;!!PvDODwlR4mBZyAb0!U_hcBdNg254N9BW6G4mxpNuV5fM6xeJx17qUiutSCKmfbZ3FGXhNS74iFpZAQa9qh-Vut6nTnvQrwxG0auM$ >.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+---------------
+
+Method 1: Fishers Exact Test 
+
+Elise: 
+```{r Fishers Exact (Elise)}
+install.packages(openxlsx)
+library(readxlsx)
+
+install.packages("writexl")
+library("writexl")
+
+pathwayData<-PathAndKO
+attach(pathwayData)
+
+##build new data frame for p-values
+pValues <- data.frame() 
+
+for (row in 1:nrow(pathwayData)) {
+  KO<- pathwayData[row, 1]
+  x<- sum(pathwayData[row, 3:4])
+  y<- 2-x
+  z<- sum(pathwayData[row, 5:6])    
+  v<- 2-z
+  contingTable<- matrix(c(x,y,z,v), nrow=2, ncol=2, dimnames = list(c("present","not present"), c("non-stone","stone")))
+  test<-fisher.test(contingTable)
+  print(test$p.value)
+    
+  pValues = rbind(pValues,list(KO,test$p.value))
+}
+
+
+colnames(pValues) = c("Pathway","P-Value")
+
+write_xlsx(pValues,"pValues11.xlsx")
+```
+
+Allison: 
+```{r}
+##REQUIRED TO EXPORT DATA AS EXCEL DOCUMENT
+install.packages("openxlsx")
+library(openxlsx)
+
+pathwayData<-SpeciesData
+attach(pathwayData)
+
+##build new data frame for p-values
+pValues <- data.frame() 
+
+##Set the applicable sample columns
+nsNumRows <- 2:2
+sNumRows <- 3:4
+
+##Gets total number of samples for each group
+nsLength <- length(nsNumRows)
+sLength <- length(sNumRows)
+
+##for each row
+for (row in 1:nrow(pathwayData)) {
+
+  ##save KO
+    KO<- pathwayData[row, 1]
+    
+  ##contingency table
+    x<- sum(pathwayData[row, nsNumRows])
+    y<- nsLength-x
+    z<- sum(pathwayData[row, sNumRows])
+    v<- sLength-z
+    contingTable<- matrix(c(x,y,z,v), nrow=2, ncol=2, dimnames = list(c("present","not present"), c("non-stone","stone")))
+    
+  ##Print values
+    print(KO)
+    print(contingTable)
+    test<-fisher.test(contingTable)
+    print(test$p.value)
+    
+  ##save KO and corresponding P-Value to the new data frame 
+    pValues = rbind(pValues,list(KO,test$p.value))
+}
+
+##label columns in new data frame
+colnames(pValues) = c("Pathway","P-Value")
+
+##create excel file with the p-value data 
+##file saves to "Documents Folder" (save location can be changed by including the file path in the second argument)
+## uses "openxlsx" package
+write.xlsx(pValues,"pValues.xlsx")
+
+```
+
+
+-----------------------------------------------------
+Method 2: compar.gee() Function
+
+```{r compar.gee}
+install.packages("ape")
+install.packages("gee")
+install.packages("writexl")
+
+library(ape)
+library(gee)
+library("writexl")
+library(readxl)
+
+#set up data frame for excel
+GEEreturn <- data.frame()
+
+#load tree
+tree <- read.tree("Desktop/LAUD/treefinal.txt")
+plot(tree)
+class(tree)
+
+#load KO data for pathways
+KO_data <- read_excel("Desktop/LAUD/KOs_transposed_correct.xlsx",
+                      sheet = "Sheet1")
+View(KO_data)
+
+#stone associated v non-stone
+stone_nostone<- c(0,0,0,0,0,0,0,1,1,1,1,1,1,1,1)
+
+#renaming rows and setting as data frame
+KO_data<-as.data.frame(KO_data)
+rownames(KO_data)<- c("P.mirabilis1", "S.epidermidis1", "S.epidermidis2", "P.aeruginosa1", "P.aeruginosa2", "E.coli1", "E.coli2", "P.aeruginosa3", "P.aeruginosa4", "S.epidermidis3", "E.coli3", "P.mirabilis2", "P.aeruginosa5", "P.mirabilis3", "E.coli4")
+
+KO_data<-KO_data[,-1]
+View(KO_data)
+
+#trycatch function
+my_function<- function(col) {
+  tryCatch(
+    {result<-compar.gee(stone_nostone ~ col, data = KO_data, family = "binomial", phy = tree)
+    print(result)
+    return(result)
+    },
+    error=function(e) {
+      KOterm<-(colnames(KO_data)[x]) #1 term
+      print("approached 1")
+      return("approached 1")
+    }
+  )
+}
+
+#for loop
+for (x in 1:ncol(KO_data)) {
+  col <- KO_data[ ,x]
+  KOterm<- ((colnames(KO_data)[x]))
+  if (sum(col)<13 & sum(col)>2) {
+    print(KOterm)
+    print(col)
+    print(paste("x=", x))
+    result<-my_function(col)
+    if (length(result)==1) {
+      error<- "error"
+      na<- "NA"
+      GEEreturn = rbind(GEEreturn,list(KOterm,error, na, na))
+    } else {
+      Coef<- unname(result$coefficients)[2] # 2 terms: intercept, col
+      odds<-exp(Coef)
+      #matrix with p-values and t
+      nas <- is.na(result$coef)
+      coef <- result$coef[!nas]
+      cnames <- names(coef)
+      coef <- matrix(rep(coef, 4), ncol = 4)
+      dimnames(coef) <- list(cnames,
+                             c("Estimate", "S.E.", "t", "Pr(T > |t|)"))
+      df <- result$dfP - dim(coef)[1]
+      coef[, 2] <- sqrt(diag(result$W))
+      coef[, 3] <- coef[, 1]/coef[, 2]
+      coef[, 4] <- 2 * (1 -  pt(abs(coef[, 3]), df))
+      p_val<-coef[2,4]
+      test_stat<-coef[2,3]
+      GEEreturn = rbind(GEEreturn,list(KOterm, odds, test_stat, p_val)) #paste(rlist[1]), paste(rlist[2]), paste(rlist[3]), paste(rlist[4]), paste(rlist[5]), paste(rlist[6]) )
+    }
+  } else {
+    exc<- "DNMC"
+    na<-"NA"
+    GEEreturn = rbind(GEEreturn,list(KOterm,exc, na, na))
+  }
+}
+
+#name GEEreturn columns
+colnames(GEEreturn) = c("KO","odds", "t", "p-value")
+
+#check data table
+View(GEEreturn)
+
+#write GEEreturn to an excel
+write_xlsx(GEEreturn,"GEEreturn_new.xlsx")
+```
+
+
+--------------------------------------------------------------------
+
+Method 3: Intuitive Approach 
+
+First, we found the stone-associated KOs. This code was altered to additionally find the non-stone-associated KOs.
+
+Elise: 
+```{r find stone-associated KOs (Elise)}
+
+#load packages
+library(readxl)
+library("writexl")
+
+#read in KOs file, select "Genes" sheet for genes and "Pathways" for pathways 
+KOs_transposed <- read_excel("Desktop/LAUD/KOs_transposed_correct.xlsx", 
+      sheet = "Genes")
+View(KOs_transposed)
+
+#make data frame for results
+diffKOs <- data.frame()
+View(diffKOs)
+
+#P.mirabilis
+nsPm<- c(1)
+sPm<- c(12,14)
+Pm<- c(1,12,14)
+length(Pm)
+#S.epidermidis
+nsSe<- c(2,3)
+sSe<- c(10)
+Se<- c(2,3,10)
+#P.aeruginosa
+nsPa<- c(4,5)
+sPa<- c(8,9,13)
+Pa<- c(4,5,8,9,13)
+#E.coli
+nsEc<- c(6,7)
+sEc<- c(11,15)
+Ec<- c(6,7,11,15)
+
+#function
+alldiff_function<- function(x) {
+  KO<- colnames(KOs_transposed)[x]
+  Pmsum<- sum(KOs_transposed[Pm,x])
+  Sesum<- sum(KOs_transposed[Se,x])
+  Pasum<- sum(KOs_transposed[Pa,x])
+  Ecsum<- sum(KOs_transposed[Ec,x])
+  resultlist<-list()
+  #P.mirabilis
+  if (Pmsum != length(Pm) & Pmsum != 0) {
+    if (sum(KOs_transposed[nsPm, x]) == 0 & sum(KOs_transposed[sPm, x]) == length(sPm)) {
+      specname<- "P. mirabilis"
+      print(paste(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      }
+  }
+  #S.epidermidis
+  if (Sesum != length(Se) & Sesum != 0) {
+    if (sum(KOs_transposed[nsSe, x]) == 0 & sum(KOs_transposed[sSe, x]) == length(sSe)) {
+      specname<- "S. epidermidis"
+      print(paste(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+    }
+  }
+  #P.aeruginosa
+  if (Pasum != length(Pa) & Pasum != 0) {
+    if (sum(KOs_transposed[nsPa, x]) == 0 & sum(KOs_transposed[sPa, x]) == length(sPa)) {
+      specname<- "P. aeruginosa"
+      print(paste(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+    }
+  }
+  #E.coli
+  if (Ecsum != length(Ec) & Ecsum != 0) {
+    if (sum(KOs_transposed[nsEc, x]) == 0 & sum(KOs_transposed[sEc, x]) == length(sEc)) {
+      specname<- "E. coli"
+      print(paste(KO, specname))
+      resultlist<- append(resultlist, c(KO, specname))
+      #diffKOs = rbind(diffKOs,list(KO, specname))
+    }
+  }
+  return(resultlist)
+}
+#for loop 
+for (x in 2:ncol(KOs_transposed)) {
+  col <- KOs_transposed[ ,x]
+  #eliminates all 1s and all 0s
+  tryCatch({
+    if (sum(col) != 15 & sum(col) != 0) {
+      sig_KOs<- alldiff_function(x)
+      if (length(sig_KOs)==2){
+        diffKOs = rbind(diffKOs, sig_KOs)
+      }
+      if (length(sig_KOs)==4){
+        diffKOs = rbind(diffKOs, sig_KOs[1:2])
+        diffKOs = rbind(diffKOs, sig_KOs[3:4])
+      }
+      if (length(sig_KOs)==6){
+        diffKOs = rbind(diffKOs, sig_KOs[1:2])
+        diffKOs = rbind(diffKOs, sig_KOs[3:4])
+        diffKOs = rbind(diffKOs, sig_KOs[5:6])
+      }
+      if (length(sig_KOs)==8){
+        diffKOs = rbind(diffKOs, sig_KOs[1:2])
+        diffKOs = rbind(diffKOs, sig_KOs[3:4])
+        diffKOs = rbind(diffKOs, sig_KOs[5:6])
+        diffKOs = rbind(diffKOs, sig_KOs[7:8])
+      }
+      }
+  }, error=function(e) {
+      KO<- colnames(KOs_transposed)[x]
+      print(paste(KO, "error"))
+    }
+  )
+}
+
+View(diffKOs)
+#add column names to results data frame 
+colnames(diffKOs) = c("KO","species")
+
+write_xlsx(diffKOs,"diffKOsnew.xlsx")
+
+```
+
+Allison: 
+```{r find stone-associated KOs (Allison)}
+
+#GOAL 1
+#FIND KO TERMS WITH DIFFERENCES WITHIN SPECIES
+
+#PACKAGE INSTALL
+install.packages("openxlsx")
+install.packages("readxl")
+
+#PACKAGE ACTIVATION
+library(openxlsx)
+library(readxl)
+
+#READ IN FILES
+##May need to change file path to reflect your data
+###This file contains all of our pathway data, with each species being given a separate sheet in the Excel file
+myExcel <- "R/tp_ko_data.xlsx"
+myWB <- loadWorkbook(myExcel)
+
+##Create new empty workbook 
+###This will become the new Excel file with our results
+resultsFile <- createWorkbook()
+
+##Get sheet names from the file we read in (Species Names)
+sheetNames <- names(myWB)[2:5]
+
+##Get results for each species in the Excel file
+for (sheetName in sheetNames) {
+  ##Add new sheet to the new workbook that will hold our results
+  addWorksheet(resultsFile, sheetName = sheetName)
+  
+  ##Read in data from current sheet/species
+  currentSheet <-
+    as.data.frame(read_excel(myExcel, sheet = sheetName))
+  
+  ##Build new data frame to store results in (any KO term where the stone bacteria have a gene and the nonstone bacteria do not have the gene)
+  ###Already contains species name and a binary variable indicating whether they are stone or non-stone associated
+  speciesData <-
+    data.frame(
+      Species = currentSheet$Species,
+      Stone = currentSheet$Stone,
+      stringsAsFactors = FALSE
+    )
+  
+  ##Calculate total number of stone and non-stone associated species in the table/current sheet
+  nsNum <- sum(currentSheet$Stone == 0)
+  sNum <- sum(currentSheet$Stone == 1)
+  
+  
+  ##For each KO term...
+  for (col in 3:ncol(currentSheet)) {
+    ##Count the number of stone and non-stone associated samples that have the gene
+    nsCount <-
+      sum((currentSheet[, col] == 1) & (currentSheet$Stone == 0))
+    sCount <-
+      sum((currentSheet[, col] == 1) & (currentSheet$Stone == 1))
+    
+  
+    ##Print the KO Term
+    print(colnames(currentSheet[col]))
+    
+    ###RUN ONLY THE RELEVANT CONDITIONAL STATEMENT TO ISOLATE DATA
+    
+    ##CONDITIONAL: STONE EXCLUSIVE KO
+    ##If the gene is only found in the stone bacteria, add the column to the data frame
+    if((sCount==sNum)&&(nsCount==0)){
+      print("ADDED")
+      speciesData <- cbind(speciesData, currentSheet[, col])
+      colnames(speciesData)[ncol(speciesData)] <-
+        colnames(currentSheet)[col]
+    } else {
+      print("NOT STONE EXCLUSIVE")
+    }
+    
+    ##CONDITIONAL: NON-STONE EXCLUSIVE KO
+    ##If the gene is only found in the nonstone bacteria, add the column to the data frame
+    if((sCount==0)&&(nsCount==nsNum)){
+      print("ADDED")
+      speciesData <- cbind(speciesData, currentSheet[, col])
+      colnames(speciesData)[ncol(speciesData)] <-
+        colnames(currentSheet)[col]
+    } else {
+      print("NOT NON-STONE EXCUSIVE")
+    }
+    
+    ##CONDITIONAL: KO PRESENT IN STONE BACTERIA
+    ##Gives the KO terms that have the gene present in at least one of the stone associated bacteria
+    if((sCount !=0 )&&(nsCount == 0)){
+      print("ADDED")
+      speciesData <- cbind(speciesData, currentSheet[, col])
+      colnames(speciesData)[ncol(speciesData)] <-
+        colnames(currentSheet)[col]
+    } else {
+      print("NOT PRESENT IN STONE ASSOCIATED BACTERIA")
+    }
+    
+    ##CONDITIONAL: KO PRESENT IN NON-STONE BACTERIA
+    ##Gives the KO terms that have the gene present in at least one of the nonstone associated bacteria
+    if((sCount == 0 )&&(nsCount != 0)){
+      print("ADDED")
+      speciesData <- cbind(speciesData, currentSheet[, col])
+      colnames(speciesData)[ncol(speciesData)] <-
+      colnames(currentSheet)[col]
+    } else {
+      print("NOT PRESENT IN NON-STONE ASSOCIATED BACTERIA")
+    }
+  }
+  ##Write data frame to our results Excel Sheet
+  writeData(resultsFile, sheet = sheetName, x = speciesData)
+}
+
+##Saves workbook to a new Excel file which can be overwritten
+###May need to change the file name or path AND make overwrite = FALSE if you want it saved elsewhere or with a different name
+####Make sure the file is closed before running this part or else the console will give you an error
+saveWorkbook(resultsFile, "R/Species_KO_Variance_CHECK_nonstone.xlsx", overwrite = TRUE)
+
+
+
+```
+
+
+Then, we looked for overlapping KOs between species. 
+```{bash}
+#make combined file of all stone-associated KOs
+cat E.coliKO.txt S.epidermidisKO.txt P.mirabilisKO.txt P.aeruginosaKO.txt > KO_variance_all.txt
+#sort combined file
+sort KO_variance_all.txt > KO_variance_sorted
+#make new file with duplicates removed 
+sort -u KO_variance_sorted > KO_variance_noduplic
+#compare files with and without duplicates
+diff KO_variance_sorted KO_variance_noduplic
+#make directory for files of stone-associated KOs from each species
+mkdir variance_KOs
+#move stone-associated KO files to the directory 
+mv E.coliKO.txt variance_KOs 
+mv S.epidermidisKO.txt variance_KOs
+mv P.mirabilisKO.txt variance_KOs
+mv P.aeruginosaKO.txt variance_KOs
+#change to the directory
+cd variance_KOs
+#search within the directory for KOs identified by diff
+grep "K08479" *  path/variance_KOs
+
+```
+
+
+This code randomly generates 100 KOs present in at least 1 of the stone-associated isolates from each species.
+
+```{r}
+library(readxl)
+library("writexl")
+
+#load KO data
+KOs_transposed <- read_excel("Desktop/LAUD/KOs_transposed_correct.xlsx", 
+                             sheet = "Genes")
+
+#eliminates species names
+KOs_transposed<-KOs_transposed[,-1]
+View(KOs_transposed)
+
+#start data frames
+Pm_stone_KO<- data.frame()
+Se_stone_KO<- data.frame()
+Pa_stone_KO<- data.frame()
+Ec_stone_KO<- data.frame()
+
+#number rows for each bacteria
+nsPm<- c(1)
+sPm<- c(12,14)
+Pm<- c(1,12,14)
+length(Pm)
+#S.epidermidis
+nsSe<- c(2,3)
+sSe<- c(10)
+Se<- c(2,3,10)
+#P.aeruginosa
+nsPa<- c(4,5)
+sPa<- c(8,9,13)
+Pa<- c(4,5,8,9,13)
+#E.coli
+nsEc<- c(6,7)
+sEc<- c(11,15)
+Ec<- c(6,7,11,15)
+
+#find all the unique stone-associated KOs 
+for (x in 1:ncol(KOs_transposed)) {
+  col <- KOs_transposed[ ,x]
+  KO<- colnames(KOs_transposed)[x]
+  #P. mirabilis
+  if (sum(col[sPm, ]) >= 1) {
+    df_entry<- list(x, KO)
+    Pm_stone_KO = rbind(Pm_stone_KO, df_entry)
+  }
+  #S. epidermidis
+  if (sum(col[sSe, ]) >= 1) {
+    df_entry<- list(x, KO)
+    Se_stone_KO = rbind(Se_stone_KO, df_entry)
+  }
+  #P. aeruginosa
+  if (sum(col[sPa, ]) >= 1) {
+    df_entry<- list(x, KO)
+    Pa_stone_KO = rbind(Pa_stone_KO, df_entry)
+  }
+  #E. coli
+  if (sum(col[sEc, ]) >= 1) {
+    df_entry<- list(x, KO)
+    Ec_stone_KO = rbind(Ec_stone_KO, df_entry)
+  }
+}
+
+#P. mirabilis random generator
+random_100 <- sample(1:nrow(Pm_stone_KO), 100, replace=FALSE)
+Pm_KOs_random<- data.frame()
+for (x in random_100) {
+  Pm_KOs_random = rbind(Pm_KOs_random, Pm_stone_KO[x, ])
+}
+
+#S. epidermidis random generator
+random_100 <- sample(1:nrow(Se_stone_KO), 100, replace=FALSE)
+Se_KOs_random<- data.frame()
+for (x in random_100) {
+  Se_KOs_random = rbind(Se_KOs_random, Se_stone_KO[x, ])
+}
+
+#P. aeruginosa random generator
+random_100 <- sample(1:nrow(Pa_stone_KO), 100, replace=FALSE)
+Pa_KOs_random<- data.frame()
+for (x in random_100) {
+  Pa_KOs_random = rbind(Pa_KOs_random, Pa_stone_KO[x, ])
+}
+
+#E. coli random generator 
+random_100 <- sample(1:nrow(Ec_stone_KO), 100, replace=FALSE)
+Ec_KOs_random<- data.frame()
+for (x in random_100) {
+  Ec_KOs_random = rbind(Ec_KOs_random, Ec_stone_KO[x, ])
+}
+
+#name columns
+colnames(Pm_KOs_random) = c("x", "KO")
+colnames(Se_KOs_random) = c("x", "KO")
+colnames(Pa_KOs_random) = c("x", "KO")
+colnames(Ec_KOs_random) = c("x", "KO")
+
+#load into excel
+write_xlsx(Pm_KOs_random,"Pm_random_KOs.xlsx")
+
+write_xlsx(Se_KOs_random,"Se_random_KOs.xlsx")
+
+write_xlsx(Pa_KOs_random,"Pa_random_KOs.xlsx")
+
+write_xlsx(Ec_KOs_random,"Ec_random_KOs.xlsx")
+```
+
+
